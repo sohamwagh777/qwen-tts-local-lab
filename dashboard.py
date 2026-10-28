@@ -129,96 +129,57 @@ async def tts(req: Request):
 
 
 SPK_CARDS = "".join(
-    f'<label class="spk"><input type="radio" name="spk" value="{k}"{" checked" if k=="Ryan" else ""}>'
-    f'<span class="ic">{v[0]}</span><span class="nm">{k}</span>'
-    f'<span class="ds">{v[1]}<br><i>{v[2]} native</i></span></label>'
-    for k, v in SPEAKERS.items())
+    f'<option value="{k}"{" selected" if k=="Ryan" else ""}>{k}</option>'
+    for k in SPEAKERS)
 
 PAGE = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Qwen TTS Lab</title><style>
-:root{{--bg:#0b0d12;--card:#141824;--line:#232a3a;--tx:#e8eaf0;--mut:#8b93a8;--acc:#4f7cff;--ok:#22c55e;--warn:#eab308;--bad:#ef4444}}
-*{{box-sizing:border-box}} body{{font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(160deg,#0b0d12,#101527 60%,#0b0d12);color:var(--tx);margin:0;padding:28px 20px;max-width:920px;margin:auto}}
-header{{display:flex;align-items:center;gap:12px;flex-wrap:wrap}}
-h1{{font-size:22px;margin:0}} .badge{{font-size:11px;color:#9fb4ff;background:#1a2340;border:1px solid #2c3a63;padding:2px 9px;border-radius:10px}}
-.pill{{padding:2px 10px;border-radius:12px;font-size:12px;margin-left:6px}}
-.ok{{background:#0f2e1a;color:#7ee2a0}}.bad{{background:#33161a;color:#ff9d9d}}.warn{{background:#33290f;color:#ffd97e}}.info{{background:#16213d;color:#9fb4ff}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}}
-textarea{{width:100%;height:110px;background:#0e1119;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:15px;resize:vertical}}
-input[type=text]{{width:100%;background:#0e1119;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px}}
-.spkgrid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}}
-.spk{{display:flex;gap:8px;align-items:center;background:#0e1119;border:1px solid var(--line);border-radius:10px;padding:9px;cursor:pointer}}
-.spk:has(input:checked){{border-color:var(--acc);background:#131b33;box-shadow:0 0 0 1px var(--acc)}}
-.spk input{{display:none}} .spk .ic{{font-size:18px}} .spk .nm{{font-weight:600;font-size:13px}} .spk .ds{{font-size:11px;color:var(--mut)}}
-.chip{{display:inline-block;background:#0e1119;border:1px solid var(--line);border-radius:14px;padding:4px 12px;margin:3px;cursor:pointer;font-size:12px;color:#c6cde0}}
-.chip:hover{{border-color:var(--acc);color:#fff}}
-.samp{{font-size:12px;color:#9fb4ff;cursor:pointer;margin-right:10px;text-decoration:underline dotted}}
-button.go{{background:linear-gradient(135deg,#4f7cff,#7a5cff);color:#fff;border:0;border-radius:10px;padding:12px 30px;font-size:15px;cursor:pointer;font-weight:600}}
-button.go:disabled{{opacity:.5;cursor:wait}}
-select{{background:#0e1119;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:8px}}
-.row{{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:12px}}
-audio{{width:100%;height:36px}}
-.item{{padding:10px 0;border-bottom:1px solid #1a2030}} .meta{{font-size:12px;color:var(--mut)}}
-.speaker-badge{{font-size:11px;background:#1a2340;color:#9fb4ff;padding:1px 8px;border-radius:9px;margin-right:6px}}
-.instruct-badge{{font-size:11px;background:#20261a;color:#b9e29f;padding:1px 8px;border-radius:9px;margin-right:6px}}
-a.dl{{color:#7ab8ff;font-size:13px}}
-footer{{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--mut)}}
-footer a{{color:#9fb4ff;text-decoration:none}}
-h3{{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px}}
+:root{{--bg:#0d0f14;--surface:#151922;--border:#242b38;--text:#e6e9f0;--muted:#7d8698;--accent:#4f7cff}}
+*{{box-sizing:border-box}} body{{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:32px 20px;max-width:680px;margin:auto}}
+header{{display:flex;align-items:center;gap:10px;margin-bottom:22px}} h1{{font-size:21px;font-weight:600;margin:0}}
+.status{{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}} .dot{{width:7px;height:7px;border-radius:50%;background:#4f7cff}} .ready{{background:#22c55e}} .loading{{background:#eab308}} .error{{background:#ef4444}}
+.card{{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}}
+label{{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}} textarea,select{{display:block;width:100%;min-height:42px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font:inherit}}
+textarea{{height:112px;resize:vertical}} button.go{{width:100%;min-height:46px;margin-top:18px;background:#4f7cff;color:#fff;border:0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}} button.go:disabled{{opacity:.65;cursor:wait}}
+:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}} audio{{width:100%;height:36px;margin-top:12px}} .meta{{font-size:12px;color:var(--muted)}} .output-link,a.dl{{color:#9db4ff;font-size:12px}} details{{margin-top:18px;color:var(--muted);font-size:13px}} summary{{cursor:pointer}} .item{{padding:10px 0;border-bottom:1px solid var(--border)}} .history-row{{display:flex;align-items:center;gap:8px;min-width:0}} .history-text{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;color:var(--muted)}} .history-row a{{color:#9db4ff}} footer{{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:22px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}} footer a{{color:#9db4ff;text-decoration:none}}
 </style></head><body>
-<header><h1>🎙️ Qwen TTS Lab</h1><span class="badge">Qwen3-TTS-12Hz-1.7B · Apache-2.0</span><span id="st"></span></header>
-
-<div class="card">
- <h3>Script</h3>
- <textarea id="text" placeholder="Type anything — English, Chinese, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian..."></textarea>
- <div style="margin-top:6px">Try: {''.join(f'<span class="samp" onclick="setT({json.dumps(s)})">sample {i+1}</span>' for i,s in enumerate(SAMPLES))}</div>
- <div style="margin:10px 0 4px"><h3 style="margin-bottom:4px">Style chips</h3>
- {''.join(f'<span class="chip" onclick="setI({json.dumps(c)})">{c}</span>' for c in CHIPS)}</div>
- <input type="text" id="instruct" placeholder="...or write your own direction: 'whisper like you're telling a secret'">
-</div>
-
-<div class="card">
- <h3>Voice</h3><div class="spkgrid">{SPK_CARDS}</div>
- <div class="row">
-  <label style="font-size:13px;color:var(--mut)">Language <select id="language">{''.join(f'<option>{l}</option>' for l in LANGS)}</select></label>
-  <button class="go" id="go" onclick="gen()">✦ Generate</button><span id="msg" class="meta"></span>
- </div>
-</div>
-
-<div class="card" id="playercard" style="display:none"><h3>Output</h3><div id="player"></div></div>
-
-<div class="card"><h3>History</h3><div id="hist"></div></div>
-
-<footer>Model: <a href="https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice">Qwen3-TTS-12Hz-1.7B-CustomVoice</a> by the <b>Qwen Team, Alibaba Group</b> (Apache-2.0) · <a href="https://github.com/sohamwagh777/qwen-tts-local-lab">repo</a> · Built by Soham Wagh</footer>
+<header><h1>Qwen TTS Lab</h1><span id="st" class="status"><span class="dot" aria-label="Loading"></span><span>loading</span></span></header>
+<main class="card">
+ <label for="text">Text</label><textarea id="text" rows="4" placeholder="Enter text to turn into speech"></textarea>
+ <label for="speaker">Voice</label><select id="speaker">{SPK_CARDS}</select>
+ <label for="instruct">Style instruction</label><select id="instruct"><option value="">Neutral (none)</option>{''.join(f'<option value="{c}">{c}</option>' for c in CHIPS)}</select>
+ <label for="language">Language</label><select id="language">{''.join(f'<option>{l}</option>' for l in LANGS)}</select>
+ <button class="go" id="go" onclick="gen()">Generate</button><div id="msg" class="meta" style="margin-top:8px"></div><div id="player"></div>
+</main>
+<details><summary>History</summary><div id="hist"></div></details>
+<footer><span>Qwen3-TTS by the <b>Qwen Team, Alibaba Group</b> (Apache-2.0) — <a href="https://github.com/sohamwagh777/qwen-tts-local-lab">repo</a> — Built by Soham Wagh</span><span id="ram"></span></footer>
 
 <script>
-function setT(t){{document.getElementById('text').value=t;}}
-function setI(t){{document.getElementById('instruct').value=t;}}
 async function refresh(){{
  try{{const s=await(await fetch('/api/status')).json();
-  const cls={{ready:'ok',loading:'warn',error:'bad',preview:'info'}}[s.model]||'warn';
-  document.getElementById('st').innerHTML=
-   `<span class="pill ${{cls}}">model: ${{s.model}}</span>`+
-   (s.mem_used_gb?`<span class="pill ${{s.mem_used_gb<100?'ok':'warn'}}">RAM ${{s.mem_used_gb}}/${{s.mem_total_gb}} GB</span>`:'');
+  const st=document.getElementById('st'), cls={{ready:'ready',loading:'loading',error:'error',preview:'preview'}}[s.model]||'loading';
+  st.innerHTML=`<span class="dot ${{cls}}" aria-label="${{s.model}}"></span><span>${{s.model}}</span>`;
+  document.getElementById('ram').textContent=s.mem_used_gb?`RAM ${{s.mem_used_gb}}/${{s.mem_total_gb}} GB`:'';
   if(s.model==='preview')document.getElementById('msg').textContent='UI preview — generation disabled';
- }}catch(e){{document.getElementById('st').innerHTML='<span class="pill bad">offline</span>';}}
+ }}catch(e){{document.getElementById('st').innerHTML='<span class="dot error" aria-label="Error"></span><span>offline</span>';}}
  try{{const h=await(await fetch('/api/history')).json();
   document.getElementById('hist').innerHTML=h.slice().reverse().map(x=>
-   `<div class="item"><audio controls preload="none" src="/out/${{x.file}}"></audio><div class="meta"><span class="speaker-badge">${{x.speaker}}</span>${{x.instruct?`<span class="instruct-badge">${{x.instruct}}</span>`:''}}${{x.seconds}}s · ${{x.kb}} KB · ${{x.text.replaceAll('<','&lt;')}} · <a class="dl" href="/out/${{x.file}}" download>dl</a></div></div>`).join('')||'<span class="meta">nothing yet</span>';
+   `<div class="item"><div class="history-row"><span>${{x.speaker}}</span><span class="meta">${{x.seconds}}s</span><span class="history-text">${{x.text.replaceAll('<','&lt;')}}</span><audio controls preload="none" src="/out/${{x.file}}" aria-label="Play ${{x.speaker}} audio"></audio><a class="dl" href="/out/${{x.file}}" download>dl</a></div></div>`).join('')||'<span class="meta">nothing yet</span>';
  }}catch(e){{}}
 }}
 async function gen(){{
- const b=document.getElementById('go');b.disabled=true;document.getElementById('msg').textContent='generating…';
+ const b=document.getElementById('go');b.disabled=true;b.textContent='Generating…';document.getElementById('msg').textContent='';
  const r=await fetch('/api/tts',{{method:'POST',headers:{{'content-type':'application/json'}},
-  body:JSON.stringify({{text:document.getElementById('text').value,speaker:document.querySelector('input[name=spk]:checked').value,
+  body:JSON.stringify({{text:document.getElementById('text').value,speaker:document.getElementById('speaker').value,
    language:document.getElementById('language').value,instruct:document.getElementById('instruct').value}})}});
- const j=await r.json();b.disabled=false;
+ const j=await r.json();b.disabled=false;b.textContent='Generate';
  if(j.error){{document.getElementById('msg').textContent=j.error;return;}}
  document.getElementById('msg').textContent=`${{j.seconds}}s · ${{j.kb}} KB`;
- document.getElementById('playercard').style.display='block';
- document.getElementById('player').innerHTML=`<audio controls autoplay src="${{j.url}}"></audio><br><a class="dl" href="${{j.url}}" download>⬇ download WAV</a>`;
+ document.getElementById('player').innerHTML=`<audio controls autoplay src="${{j.url}}"></audio><br><a class="output-link" href="${{j.url}}" download>download WAV</a>`;
  refresh();
 }}
+document.getElementById('text').focus();document.getElementById('text').addEventListener('keydown',e=>{{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')gen();}});
 refresh();setInterval(refresh,4000);
 </script></body></html>"""
 
