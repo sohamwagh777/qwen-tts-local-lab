@@ -1,0 +1,5 @@
+qwen-tts
+soundfile
+fastapi
+uvicorn
+# torch/torchaudio are installed by setup.sh from the cu129 index on purpose

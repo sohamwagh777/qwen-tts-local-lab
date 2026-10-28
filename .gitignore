@@ -1,0 +1,7 @@
+.venv/
+out/
+.history.json
+Qwen3-TTS-*/
+__pycache__/
+*.wav
+.DS_Store
