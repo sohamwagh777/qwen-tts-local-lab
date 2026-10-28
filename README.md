@@ -125,6 +125,30 @@ Ryan · Aiden (EN), Vivian · Serena · Uncle_Fu · Dylan · Eric (ZH, incl. Bei
 - [ ] Base model: 3-second voice cloning endpoint in dashboard
 - [ ] OpenAI-compatible `/v1/audio/speech` wrapper for drop-in app use
 
+## Credits & citation
+
+All model capability belongs to its builders — this repo is just plumbing around their work:
+
+> **Qwen3-TTS** is developed by the **Qwen Team, Alibaba Group**.
+> Model: [Qwen3-TTS-12Hz-1.7B-CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) (Apache-2.0) ·
+> Code: [Qwen/Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) ·
+> Tech report: [arXiv:2601.15621](https://arxiv.org/abs/2601.15621) ·
+> Blog: [qwen.ai blog #98](https://qwen.ai/blog?id=qwen3tts-0115)
+
+If you use this project in research, please cite the Qwen3-TTS report:
+
+```bibtex
+@article{qwen3tts2026,
+  title = {Qwen3-TTS Technical Report},
+  author = {{Qwen Team}},
+  year  = {2026},
+  eprint = {2601.15621},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.SD},
+  url = {https://arxiv.org/abs/2601.15621}
+}
+```
+
 ## License
 
 MIT (scripts, dashboard, docs). Model weights: Apache-2.0 (Qwen).

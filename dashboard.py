@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Qwen TTS Lab dashboard — one page to generate speech.
 
-  cd ~/qwen-tts-lab && .venv/bin/python dashboard.py
-Open: http://127.0.0.1:8642
+  cd ~/qwen-tts-lab && .venv/bin/python dashboard.py            # full TTS
+  TTS_NO_MODEL=1 .venv/bin/python dashboard.py                  # UI preview, no GPU
+  TTS_HOST=0.0.0.0 ...                                           # expose on LAN
 
-Loads Qwen3-TTS-12Hz-1.7B-CustomVoice once (~4-6 GB GPU), serves a simple UI:
-speaker picker, language, natural-language style instruction, text, player, history.
+Loads Qwen3-TTS-12Hz-1.7B-CustomVoice once (~5 GB), serves a UI with speaker
+cards, style-instruction chips, sample prompts, player and history.
 """
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -23,23 +25,28 @@ HISTORY = HERE / ".history.json"
 MODEL = str(HERE / "Qwen3-TTS-12Hz-1.7B-CustomVoice")
 
 SPEAKERS = {
-    "Ryan": "dynamic male, rhythmic (EN native)",
-    "Aiden": "sunny American male",
-    "Vivian": "bright young female (ZH native)",
-    "Serena": "warm gentle female (ZH native)",
-    "Uncle_Fu": "low mellow seasoned male",
-    "Dylan": "Beijing male, clear",
-    "Eric": "Chengdu male, slightly husky",
-    "Ono_Anna": "playful Japanese female",
-    "Sohee": "warm Korean female",
+    "Ryan": ("⚡", "dynamic male, rhythmic", "EN"),
+    "Aiden": ("☀️", "sunny American male", "EN"),
+    "Vivian": ("✨", "bright young female", "ZH"),
+    "Serena": ("🌸", "warm gentle female", "ZH"),
+    "Uncle_Fu": ("🎩", "low mellow seasoned male", "ZH"),
+    "Dylan": ("🏙️", "Beijing male, clear", "ZH"),
+    "Eric": ("🌶️", "Chengdu male, husky-bright", "ZH"),
+    "Ono_Anna": ("🎀", "playful Japanese female", "JA"),
+    "Sohee": ("🍀", "warm Korean female", "KO"),
 }
 LANGS = ["Auto", "Chinese", "English", "Japanese", "Korean", "German",
          "French", "Russian", "Portuguese", "Spanish", "Italian"]
 CHIPS = ["Speak warmly", "Very excited", "Sad and slow", "Whisper quietly",
-         "Angry and sharp", "Dramatic storytelling", "Professional news anchor",
-         " Cheerful and fast"]
+         "Angry and sharp", "Dramatic storytelling", "Professional news anchor", "Cheerful and fast"]
+SAMPLES = [
+    "Breaking news: local engineer builds a radio station out of a coffee machine. Experts are baffled.",
+    "You are doing amazing. Seriously — take a breath, drink some water, keep going.",
+    "The quick brown fox jumps over the lazy dog, twice, while nobody is watching.",
+]
 
-state = {"model": None, "error": None, "busy": False}
+PREVIEW = os.environ.get("TTS_NO_MODEL", "0") == "1"
+state = {"model": "preview" if PREVIEW else None, "error": None, "busy": False}
 lock = threading.Lock()
 
 
@@ -57,7 +64,8 @@ def load_model():
         print("model load FAILED:", state["error"], flush=True)
 
 
-threading.Thread(target=load_model, daemon=True).start()
+if not PREVIEW:
+    threading.Thread(target=load_model, daemon=True).start()
 
 app = FastAPI()
 app.mount("/out", StaticFiles(directory=str(OUT)), name="out")
@@ -72,9 +80,11 @@ def history():
 
 @app.get("/api/status")
 def status():
-    out = {"model": "loading" if (state["model"] is None and state["error"] is None)
-           else ("error" if state["error"] else "ready"),
-           "busy": state["busy"]}
+    if PREVIEW:
+        out = {"model": "preview", "busy": False}
+    else:
+        out = {"model": "loading" if (state["model"] is None and state["error"] is None)
+               else ("error" if state["error"] else "ready"), "busy": state["busy"]}
     try:
         mem = {}
         for line in Path("/proc/meminfo").read_text().splitlines():
@@ -89,6 +99,8 @@ def status():
 
 @app.post("/api/tts")
 async def tts(req: Request):
+    if PREVIEW:
+        return JSONResponse({"error": "preview mode — start without TTS_NO_MODEL=1 to generate"}, 425)
     body = await req.json()
     text = (body.get("text") or "").strip()
     if not text:
@@ -100,11 +112,8 @@ async def tts(req: Request):
     try:
         t0 = time.time()
         wavs, sr = state["model"].generate_custom_voice(
-            text=text,
-            language=body.get("language", "Auto"),
-            speaker=body.get("speaker", "Ryan"),
-            instruct=body.get("instruct") or None,
-        )
+            text=text, language=body.get("language", "Auto"),
+            speaker=body.get("speaker", "Ryan"), instruct=body.get("instruct") or None)
         import soundfile as sf
         name = f"{int(time.time()*1000)}.wav"
         sf.write(str(OUT / name), wavs[0], sr)
@@ -119,57 +128,97 @@ async def tts(req: Request):
         lock.release()
 
 
-PAGE = """<!doctype html><html><head><meta charset="utf-8">
+SPK_CARDS = "".join(
+    f'<label class="spk"><input type="radio" name="spk" value="{k}"{" checked" if k=="Ryan" else ""}>'
+    f'<span class="ic">{v[0]}</span><span class="nm">{k}</span>'
+    f'<span class="ds">{v[1]}<br><i>{v[2]} native</i></span></label>'
+    for k, v in SPEAKERS.items())
+
+PAGE = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Qwen TTS Lab</title><style>
-body{font-family:system-ui,sans-serif;background:#0f1117;color:#e6e6e6;margin:0;padding:24px;max-width:880px;margin:auto}
-h1{font-size:20px}.pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;margin-left:6px}
-.ok{background:#123d1e;color:#7ee2a0}.bad{background:#451a1a;color:#ff9d9d}.warn{background:#3d3413;color:#ffd97e}
-textarea{width:100%;height:120px;background:#171a22;color:#eee;border:1px solid #2a2f3a;border-radius:8px;padding:12px;font-size:15px;box-sizing:border-box}
-input[type=text]{width:100%;background:#171a22;color:#eee;border:1px solid #2a2f3a;border-radius:8px;padding:9px;font-size:14px;box-sizing:border-box}
-.chip{display:inline-block;background:#1d2330;border:1px solid #2f3850;border-radius:14px;padding:3px 11px;margin:3px;cursor:pointer;font-size:12px}
-.chip:hover,.chip.on{background:#273052;border-color:#4b6bb0}
-select{background:#171a22;color:#eee;border:1px solid #2a2f3a;border-radius:6px;padding:7px}
-button{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:11px 26px;font-size:15px;cursor:pointer}
-button:disabled{background:#333}
-.row{margin:12px 0;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.item{padding:8px 0;border-bottom:1px solid #1c2029}audio{width:100%;height:32px}
-.meta{font-size:12px;color:#8b93a5}</style></head><body>
-<h1>🎙️ Qwen TTS Lab <span id="st"></span></h1>
-<textarea id="text" placeholder="Type anything — English, Chinese, Japanese, Korean, European languages..."></textarea>
-<div style="margin:6px 0">""" + "".join(f'<span class="chip" onclick="setI(\'{c.strip()}\')">{c.strip()}</span>' for c in CHIPS) + """</div>
-<input type="text" id="instruct" placeholder="Style instruction (natural language, optional)... e.g. 'whisper like you're telling a secret'">
-<div class="row">
- <label>Speaker <select id="speaker">""" + "".join(f'<option value="{k}">{k} — {v}</option>' for k, v in SPEAKERS.items()) + """</select></label>
- <label>Language <select id="language">""" + "".join(f'<option>{l}</option>' for l in LANGS) + """</select></label>
- <button id="go" onclick="gen()">Generate</button><span id="msg" class="meta"></span>
+:root{{--bg:#0b0d12;--card:#141824;--line:#232a3a;--tx:#e8eaf0;--mut:#8b93a8;--acc:#4f7cff;--ok:#22c55e;--warn:#eab308;--bad:#ef4444}}
+*{{box-sizing:border-box}} body{{font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(160deg,#0b0d12,#101527 60%,#0b0d12);color:var(--tx);margin:0;padding:28px 20px;max-width:920px;margin:auto}}
+header{{display:flex;align-items:center;gap:12px;flex-wrap:wrap}}
+h1{{font-size:22px;margin:0}} .badge{{font-size:11px;color:#9fb4ff;background:#1a2340;border:1px solid #2c3a63;padding:2px 9px;border-radius:10px}}
+.pill{{padding:2px 10px;border-radius:12px;font-size:12px;margin-left:6px}}
+.ok{{background:#0f2e1a;color:#7ee2a0}}.bad{{background:#33161a;color:#ff9d9d}}.warn{{background:#33290f;color:#ffd97e}}.info{{background:#16213d;color:#9fb4ff}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}}
+textarea{{width:100%;height:110px;background:#0e1119;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:15px;resize:vertical}}
+input[type=text]{{width:100%;background:#0e1119;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px}}
+.spkgrid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}}
+.spk{{display:flex;gap:8px;align-items:center;background:#0e1119;border:1px solid var(--line);border-radius:10px;padding:9px;cursor:pointer}}
+.spk:has(input:checked){{border-color:var(--acc);background:#131b33;box-shadow:0 0 0 1px var(--acc)}}
+.spk input{{display:none}} .spk .ic{{font-size:18px}} .spk .nm{{font-weight:600;font-size:13px}} .spk .ds{{font-size:11px;color:var(--mut)}}
+.chip{{display:inline-block;background:#0e1119;border:1px solid var(--line);border-radius:14px;padding:4px 12px;margin:3px;cursor:pointer;font-size:12px;color:#c6cde0}}
+.chip:hover{{border-color:var(--acc);color:#fff}}
+.samp{{font-size:12px;color:#9fb4ff;cursor:pointer;margin-right:10px;text-decoration:underline dotted}}
+button.go{{background:linear-gradient(135deg,#4f7cff,#7a5cff);color:#fff;border:0;border-radius:10px;padding:12px 30px;font-size:15px;cursor:pointer;font-weight:600}}
+button.go:disabled{{opacity:.5;cursor:wait}}
+select{{background:#0e1119;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:8px}}
+.row{{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:12px}}
+audio{{width:100%;height:36px}}
+.item{{padding:10px 0;border-bottom:1px solid #1a2030}} .meta{{font-size:12px;color:var(--mut)}}
+.speaker-badge{{font-size:11px;background:#1a2340;color:#9fb4ff;padding:1px 8px;border-radius:9px;margin-right:6px}}
+.instruct-badge{{font-size:11px;background:#20261a;color:#b9e29f;padding:1px 8px;border-radius:9px;margin-right:6px}}
+a.dl{{color:#7ab8ff;font-size:13px}}
+footer{{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--mut)}}
+footer a{{color:#9fb4ff;text-decoration:none}}
+h3{{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px}}
+</style></head><body>
+<header><h1>🎙️ Qwen TTS Lab</h1><span class="badge">Qwen3-TTS-12Hz-1.7B · Apache-2.0</span><span id="st"></span></header>
+
+<div class="card">
+ <h3>Script</h3>
+ <textarea id="text" placeholder="Type anything — English, Chinese, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian..."></textarea>
+ <div style="margin-top:6px">Try: {''.join(f'<span class="samp" onclick="setT({json.dumps(s)})">sample {i+1}</span>' for i,s in enumerate(SAMPLES))}</div>
+ <div style="margin:10px 0 4px"><h3 style="margin-bottom:4px">Style chips</h3>
+ {''.join(f'<span class="chip" onclick="setI({json.dumps(c)})">{c}</span>' for c in CHIPS)}</div>
+ <input type="text" id="instruct" placeholder="...or write your own direction: 'whisper like you're telling a secret'">
 </div>
-<div id="player"></div>
-<div style="border-top:1px solid #262b36;margin-top:20px;padding-top:10px"><b>History</b><div id="hist"></div></div>
+
+<div class="card">
+ <h3>Voice</h3><div class="spkgrid">{SPK_CARDS}</div>
+ <div class="row">
+  <label style="font-size:13px;color:var(--mut)">Language <select id="language">{''.join(f'<option>{l}</option>' for l in LANGS)}</select></label>
+  <button class="go" id="go" onclick="gen()">✦ Generate</button><span id="msg" class="meta"></span>
+ </div>
+</div>
+
+<div class="card" id="playercard" style="display:none"><h3>Output</h3><div id="player"></div></div>
+
+<div class="card"><h3>History</h3><div id="hist"></div></div>
+
+<footer>Model: <a href="https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice">Qwen3-TTS-12Hz-1.7B-CustomVoice</a> by the <b>Qwen Team, Alibaba Group</b> (Apache-2.0) · <a href="https://github.com/sohamwagh777/qwen-tts-local-lab">repo</a> · Built by Soham Wagh</footer>
+
 <script>
-function setI(t){document.getElementById('instruct').value=t;}
-async function refresh(){
- try{const s=await(await fetch('/api/status')).json();
+function setT(t){{document.getElementById('text').value=t;}}
+function setI(t){{document.getElementById('instruct').value=t;}}
+async function refresh(){{
+ try{{const s=await(await fetch('/api/status')).json();
+  const cls={{ready:'ok',loading:'warn',error:'bad',preview:'info'}}[s.model]||'warn';
   document.getElementById('st').innerHTML=
-   `<span class="pill ${s.model==='ready'?'ok':s.model==='error'?'bad':'warn'}">model ${s.model}</span>`+
-   (s.mem_used_gb?`<span class="pill ${s.mem_used_gb<95?'ok':'warn'}">RAM ${s.mem_used_gb}/${s.mem_total_gb} GB</span>`:'');
- }catch(e){document.getElementById('st').innerHTML='<span class="pill bad">offline</span>';}
- try{const h=await(await fetch('/api/history')).json();
+   `<span class="pill ${{cls}}">model: ${{s.model}}</span>`+
+   (s.mem_used_gb?`<span class="pill ${{s.mem_used_gb<100?'ok':'warn'}}">RAM ${{s.mem_used_gb}}/${{s.mem_total_gb}} GB</span>`:'');
+  if(s.model==='preview')document.getElementById('msg').textContent='UI preview — generation disabled';
+ }}catch(e){{document.getElementById('st').innerHTML='<span class="pill bad">offline</span>';}}
+ try{{const h=await(await fetch('/api/history')).json();
   document.getElementById('hist').innerHTML=h.slice().reverse().map(x=>
-   `<div class="item"><audio controls preload="none" src="/out/${x.file}"></audio><div class="meta">${x.speaker}${x.instruct?' · '+x.instruct:''} · ${x.seconds}s · ${x.kb} KB · ${x.text.replaceAll('<','&lt;')}</div></div>`).join('');
- }catch(e){}
-}
-async function gen(){
+   `<div class="item"><audio controls preload="none" src="/out/${{x.file}}"></audio><div class="meta"><span class="speaker-badge">${{x.speaker}}</span>${{x.instruct?`<span class="instruct-badge">${{x.instruct}}</span>`:''}}${{x.seconds}}s · ${{x.kb}} KB · ${{x.text.replaceAll('<','&lt;')}} · <a class="dl" href="/out/${{x.file}}" download>dl</a></div></div>`).join('')||'<span class="meta">nothing yet</span>';
+ }}catch(e){{}}
+}}
+async function gen(){{
  const b=document.getElementById('go');b.disabled=true;document.getElementById('msg').textContent='generating…';
- const r=await fetch('/api/tts',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({text:document.getElementById('text').value,speaker:document.getElementById('speaker').value,
-   language:document.getElementById('language').value,instruct:document.getElementById('instruct').value})});
+ const r=await fetch('/api/tts',{{method:'POST',headers:{{'content-type':'application/json'}},
+  body:JSON.stringify({{text:document.getElementById('text').value,speaker:document.querySelector('input[name=spk]:checked').value,
+   language:document.getElementById('language').value,instruct:document.getElementById('instruct').value}})}});
  const j=await r.json();b.disabled=false;
- if(j.error){document.getElementById('msg').textContent='ERROR: '+j.error;return;}
- document.getElementById('msg').textContent=`${j.seconds}s · ${j.kb} KB`;
- document.getElementById('player').innerHTML=`<audio controls autoplay src="${j.url}"></audio> <a href="${j.url}" download style="color:#7ab8ff">download</a>`;
+ if(j.error){{document.getElementById('msg').textContent=j.error;return;}}
+ document.getElementById('msg').textContent=`${{j.seconds}}s · ${{j.kb}} KB`;
+ document.getElementById('playercard').style.display='block';
+ document.getElementById('player').innerHTML=`<audio controls autoplay src="${{j.url}}"></audio><br><a class="dl" href="${{j.url}}" download>⬇ download WAV</a>`;
  refresh();
-}
+}}
 refresh();setInterval(refresh,4000);
 </script></body></html>"""
 
@@ -185,7 +234,7 @@ def home():
 
 
 if __name__ == "__main__":
-    import os
     import uvicorn
-    # LAN-bound so Soham's laptop can reach it (trusted home network only)
-    uvicorn.run(app, host=os.environ.get("TTS_HOST", "127.0.0.1"), port=int(os.environ.get('TTS_PORT', '8642')), log_level="warning")
+    # LAN-bind with TTS_HOST=0.0.0.0 (trusted home network only)
+    uvicorn.run(app, host=os.environ.get("TTS_HOST", "127.0.0.1"),
+                port=int(os.environ.get("TTS_PORT", "8642")), log_level="warning")
